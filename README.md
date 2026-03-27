@@ -25,6 +25,27 @@ H(слово) = -Σ P(паттерн) × log₂(P(паттерн))
 - 🇷🇺 **Русский**: `words_ru.txt` (4302 слова)
 - 🇬🇧 **English**: `words_en.txt` (3932 слова)
 
+### Поддержка двух словарей
+
+Решатель поддерживает два типа словарей:
+
+1. **Валидные слова** (allowed words) - все слова, которые можно вводить
+2. **Загадываемые слова** (target words) - слова, которые могут быть ответом
+
+Это соответствует реальному Wordle, где есть большой список допустимых слов (~12,000), но загадывается только слово из меньшего списка (~2,300).
+
+**Пример использования:**
+```python
+# Один словарь (оба режима используют один файл)
+solver = WordleSolver(words_file="words_en.txt")
+
+# Два словаря (как в настоящем Wordle)
+solver = WordleSolver(
+    words_file="allowed_words.txt",      # Все допустимые слова
+    target_words_file="target_words.txt"  # Только загадываемые
+)
+```
+
 ## Установка
 
 ### 1. Установка зависимостей
@@ -53,7 +74,13 @@ python generate_cache.py words_ru.txt ru
 python generate_cache.py words_en.txt en
 ```
 
-Процесс займет 3-5 минут для каждого языка, но выполняется **один раз**. Создаст файлы `first_move_cache_ru.pkl` и `first_move_cache_en.pkl`.
+**С двумя словарями:**
+```bash
+# Формат: python generate_cache.py <валидные_слова> <загадываемые_слова> <язык>
+python generate_cache.py allowed_words.txt target_words.txt en
+```
+
+Процесс займет 3-5 минут для каждого языка, но выполняется **один раз**. Создаст файлы кэша с уникальными именами на основе размеров словарей.
 
 ## Использование
 
@@ -106,6 +133,7 @@ python benchmark.py -l en --words crane slate trace
 
 ### 💻 Использование только решателя (без GUI)
 
+**Один словарь:**
 ```python
 from wordle_solver import WordleSolver
 
@@ -122,6 +150,26 @@ solver.update_remaining(word, "01220")
 
 # Следующая рекомендация
 next_word = solver.get_suggestion()
+```
+
+**Два словаря (как в настоящем Wordle):**
+```python
+from wordle_solver import WordleSolver
+
+# Создаем решатель с двумя словарями
+solver = WordleSolver(
+    words_file="allowed_words.txt",       # Все допустимые слова
+    target_words_file="target_words.txt", # Только загадываемые
+    language="en"
+)
+
+# Решатель будет искать лучшее слово среди всех допустимых,
+# но энтропия считается относительно загадываемых слов
+word = solver.get_suggestion()
+print(f"Recommended word: {word}")
+
+# Обновление работает так же
+solver.update_remaining(word, "01220")
 ```
 
 ## Эффективность алгоритма
@@ -252,6 +300,8 @@ python benchmark.py -l ru --words кошка собака мышка
 ```
 
 ### Программный доступ
+
+**Один словарь:**
 ```python
 from wordle_solver import WordleSolver
 
@@ -265,6 +315,22 @@ solver = WordleSolver(words_file="words_en.txt", language="en")
 word = solver.get_suggestion()
 
 # Обновить после попытки (pattern: '0'=серый, '1'=желтый, '2'=зеленый)
+solver.update_remaining(word, "01220")
+```
+
+**Два словаря:**
+```python
+from wordle_solver import WordleSolver
+
+# Настоящий Wordle с двумя словарями
+solver = WordleSolver(
+    words_file="allowed_words.txt",
+    target_words_file="target_words.txt",
+    language="en"
+)
+
+# Использование аналогично
+word = solver.get_suggestion()
 solver.update_remaining(word, "01220")
 ```
 

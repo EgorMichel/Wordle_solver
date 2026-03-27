@@ -7,15 +7,18 @@ from wordle_solver import WordleSolver
 import pickle
 import time
 import sys
+import os
 
-def generate_first_move_cache(words_file="words_en.txt", language="en"):
+def generate_first_move_cache(words_file="words_ru.txt", target_words_file=None, language="ru"):
     print("=" * 60)
     print(f"ГЕНЕРАЦИЯ КЭША ДЛЯ ПЕРВОГО ХОДА ({language.upper()})")
     print("=" * 60)
     
-    solver = WordleSolver(words_file=words_file, language=language)
+    solver = WordleSolver(words_file=words_file, target_words_file=target_words_file, language=language)
     
-    print(f"\nВсего слов в словаре: {len(solver.all_words)}")
+    print(f"\nВалидных слов: {len(solver.all_words)}")
+    if target_words_file:
+        print(f"Загадываемых слов: {len(solver.target_words)}")
     print("Начинается расчет энтропии для всех слов...")
     print("Это может занять 3-5 минут...\n")
     
@@ -33,10 +36,12 @@ def generate_first_move_cache(words_file="words_en.txt", language="en"):
                 print(f"  Прогресс: {i}/{total} ({i*100//total}%) | "
                       f"Осталось: ~{remaining//60:.0f}м {remaining%60:.0f}с")
         
-        entropy = solver.calculate_entropy(word, solver.all_words)
+        # Энтропия считается относительно загадываемых слов (target_words)
+        entropy = solver.calculate_entropy(word, solver.target_words)
         
         # Небольшой бонус для слова из кандидатов
-        entropy += 0.01
+        if word in solver.target_words:
+            entropy += 0.01
         
         word_scores[word] = entropy
     
@@ -57,9 +62,11 @@ def generate_first_move_cache(words_file="words_en.txt", language="en"):
     print("-" * 60)
     
     # Сохраняем кэш
-    cache_file = f"first_move_cache_{solver.language}.pkl"
+    cache_file = solver.cache_file
     cache_data = {
-        'word_count': len(solver.all_words),
+        'valid_word_count': len(solver.all_words),
+        'target_word_count': len(solver.target_words),
+        'word_count': len(solver.all_words),  # Для обратной совместимости
         'scores': word_scores,
         'generated_at': time.strftime('%Y-%m-%d %H:%M:%S')
     }
@@ -74,16 +81,31 @@ def generate_first_move_cache(words_file="words_en.txt", language="en"):
 
 if __name__ == '__main__':
     # Поддержка аргументов командной строки
+    # Использование:
+    #   python generate_cache.py words_en.txt en
+    #   python generate_cache.py allowed_words.txt target_words.txt en
+    
+    words_file = "words_ru.txt"
+    target_words_file = None
+    language = "ru"
+    
     if len(sys.argv) > 1:
         words_file = sys.argv[1]
-        language = sys.argv[2] if len(sys.argv) > 2 else "en"
-    else:
-        # По умолчанию английский
-        words_file = "words_en.txt"
-        language = "en"
+        
+        if len(sys.argv) > 2:
+            # Проверяем, это файл или язык?
+            if os.path.exists(sys.argv[2]):
+                # Это второй файл словаря
+                target_words_file = sys.argv[2]
+                language = sys.argv[3] if len(sys.argv) > 3 else "en"
+            else:
+                # Это язык
+                language = sys.argv[2]
     
-    print(f"Словарь: {words_file}")
+    print(f"Валидные слова: {words_file}")
+    if target_words_file:
+        print(f"Загадываемые слова: {target_words_file}")
     print(f"Язык: {language}")
     print()
     
-    generate_first_move_cache(words_file, language)
+    generate_first_move_cache(words_file, target_words_file, language)

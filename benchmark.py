@@ -20,11 +20,13 @@ from wordle_solver import WordleSolver
 
 
 class WordleBenchmark:
-    def __init__(self, language: str = 'ru', words_file: str = None, max_attempts: int = 6):
+    def __init__(self, language: str = 'ru', words_file: str = None, 
+                 target_words_file: str = None, max_attempts: int = 6):
         """
         Args:
             language: язык словаря ('ru' или 'en')
-            words_file: путь к файлу словаря (если None, используется words_{language}.txt)
+            words_file: путь к файлу с валидными словами (если None, используется words_{language}.txt)
+            target_words_file: путь к файлу с загадываемыми словами (опционально)
             max_attempts: максимальное количество попыток
         """
         # Определяем файл словаря
@@ -38,6 +40,7 @@ class WordleBenchmark:
         self.language = language.lower()
         self.solver = WordleSolver(
             words_file=words_file,
+            target_words_file=target_words_file,
             language=self.language,
             verbose=False  # Отключаем подробные выводы
         )
@@ -102,14 +105,16 @@ class WordleBenchmark:
         print("=" * 70)
         lang_name = "Русский" if self.solver.language == 'ru' else "English"
         print(f"Язык: {lang_name}")
-        print(f"Всего слов в словаре: {len(self.solver.all_words)}")
+        print(f"Валидных слов: {len(self.solver.all_words)}")
+        if self.solver.target_words is not self.solver.all_words:
+            print(f"Загадываемых слов: {len(self.solver.target_words)}")
         print(f"Количество игр: {n_games}")
         print(f"Максимум попыток: {self.max_attempts}")
         print("=" * 70)
         
-        # Выбираем слова для тестирования
+        # Выбираем слова для тестирования (только из загадываемых)
         if sample_words is None:
-            test_words = random.sample(self.solver.all_words, n_games)
+            test_words = random.sample(self.solver.target_words, n_games)
         else:
             test_words = sample_words[:n_games]
         
@@ -237,6 +242,9 @@ def main():
   
   # Указать свой файл словаря
   python benchmark.py -l en --dict-file custom_words.txt -n 100
+  
+  # Использовать два словаря (как в настоящем Wordle)
+  python benchmark.py -l en --dict-file allowed.txt --target-dict-file targets.txt -n 1000
 """
     )
     
@@ -258,7 +266,10 @@ def main():
                        help='Конкретные слова для тестирования')
     
     parser.add_argument('--dict-file', type=str, default=None,
-                       help='Путь к файлу словаря (по умолчанию: words_{language}.txt)')
+                       help='Путь к файлу с валидными словами (по умолчанию: words_{language}.txt)')
+    
+    parser.add_argument('--target-dict-file', type=str, default=None,
+                       help='Путь к файлу с загадываемыми словами (опционально, для режима с двумя словарями)')
     
     args = parser.parse_args()
     
@@ -267,6 +278,7 @@ def main():
         benchmark = WordleBenchmark(
             language=args.language,
             words_file=args.dict_file,
+            target_words_file=args.target_dict_file,
             max_attempts=args.max_attempts
         )
     except FileNotFoundError as e:

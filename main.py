@@ -14,12 +14,14 @@ from wordle_assistant import WordleAssistant
 from wordle_solver import WordleSolver
 
 
-def setup_assistant(language: str):
+def setup_assistant(language: str, words_file: str = None, target_words_file: str = None):
     """
     Настройка ассистента для указанного языка
     
     Args:
         language: 'ru' или 'en'
+        words_file: Путь к файлу с валидными словами (опционально)
+        target_words_file: Путь к файлу с загадываемыми словами (опционально)
     """
     # Патчим класс для использования нужного словаря
     original_init = WordleAssistant.__init__
@@ -32,10 +34,13 @@ def setup_assistant(language: str):
         # Заголовок окна в зависимости от языка
         if language == 'ru':
             pygame.display.set_caption("Wordle Assistant - Русский")
-            words_file = "words_ru.txt"
+            default_words_file = "words_ru.txt"
         else:
             pygame.display.set_caption("Wordle Assistant - English")
-            words_file = "words_en.txt"
+            default_words_file = "words_en.txt"
+        
+        # Используем переданный файл или дефолтный
+        actual_words_file = words_file if words_file else default_words_file
         
         # Шрифты
         self.font_large = pygame.font.Font(None, 48)
@@ -43,9 +48,10 @@ def setup_assistant(language: str):
         self.font_small = pygame.font.Font(None, 24)
         self.font_tiny = pygame.font.Font(None, 20)
         
-        # Решатель с нужным словарем
+        # Решатель с нужным словарем (или словарями)
         self.solver = WordleSolver(
-            words_file=words_file,
+            words_file=actual_words_file,
+            target_words_file=target_words_file,
             language=language,
             verbose=True
         )
@@ -142,6 +148,9 @@ def main():
   
   # Запустить на английском языке
   python main.py -l en
+  
+  # Использовать два словаря (как в настоящем Wordle)
+  python main.py -l en --dict-file allowed.txt --target-dict-file targets.txt
 
 Управление:
   - Печатайте слова на клавиатуре
@@ -165,14 +174,21 @@ def main():
         '--dict-file',
         type=str,
         default=None,
-        help='Путь к файлу словаря (по умолчанию: words_{language}.txt)'
+        help='Путь к файлу с валидными словами (по умолчанию: words_{language}.txt)'
+    )
+    
+    parser.add_argument(
+        '--target-dict-file',
+        type=str,
+        default=None,
+        help='Путь к файлу с загадываемыми словами (опционально, для режима с двумя словарями)'
     )
     
     args = parser.parse_args()
     
     try:
         # Настраиваем ассистента для выбранного языка
-        setup_assistant(args.language)
+        setup_assistant(args.language, args.dict_file, args.target_dict_file)
         
         # Запускаем ассистента
         assistant = WordleAssistant()

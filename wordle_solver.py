@@ -23,7 +23,7 @@ def detect_language(words: List[str]) -> str:
     
     # Проверяем первое слово
     sample = words[0].lower()
-    if any('а' <= c <= 'я' or c == 'ё' for c in sample):
+    if any('а' <= c <= 'я' for c in sample):
         return 'ru'
     elif any('a' <= c <= 'z' for c in sample):
         return 'en'
@@ -31,9 +31,7 @@ def detect_language(words: List[str]) -> str:
 
 
 def char_to_num_ru(char: str) -> int:
-    """Русский: а=0, б=1, ..., я=32, ё=33"""
-    if char == 'ё':
-        return 33
+    """Русский: а=0, б=1, ..., я=32"""
     num = ord(char) - ord('а')
     if num < 0 or num > 32:
         raise ValueError(f"Недопустимый символ: '{char}'")
@@ -50,8 +48,6 @@ def char_to_num_en(char: str) -> int:
 
 def num_to_char_ru(num: int) -> str:
     """Число → русский символ"""
-    if num == 33:
-        return 'ё'
     return chr(num + ord('а'))
 
 
@@ -228,13 +224,33 @@ class WordleSolver:
     """Универсальный решатель Wordle с Numba-оптимизацией"""
     
     def __init__(self, words_file: str = "words.txt", 
+                 target_words_file: str = None,
                  cache_file: str = None,
                  language: str = None,
                  verbose: bool = True):
+        """
+        Инициализация решателя
+        
+        Args:
+            words_file: Файл со всеми валидными словами (можно вводить)
+            target_words_file: Файл со словами, которые могут быть загаданы.
+                             Если None, то используется words_file для обоих словарей.
+            cache_file: Файл кэша для первого хода
+            language: Язык ('ru' или 'en'). Если None - автоопределение
+            verbose: Показывать ли отладочную информацию
+        """
         self.verbose = verbose
         
-        # Загружаем словарь
+
+        # Загружаем словарь валидных слов
         self.all_words = self._load_words_raw(words_file)
+        
+        # Загружаем словарь загадываемых слов
+        if target_words_file is not None:
+            self.target_words = self._load_words_raw(target_words_file)
+        else:
+            # Если не указан отдельный файл - используем один словарь
+            self.target_words = self.all_words
         
         # Определяем язык
         if language is None:
@@ -251,13 +267,34 @@ class WordleSolver:
         
         # Фильтруем слова по языку
         self.all_words = self._filter_words(self.all_words)
+        self.target_words = self._filter_words(self.target_words)
+        
+        # Проверяем, что target_words ⊆ all_words
+        target_set = set(self.target_words)
+        all_set = set(self.all_words)
+        if not target_set.issubset(all_set):
+            extra_words = target_set - all_set
+            if self.verbose:
+                print(f"⚠ Внимание: {len(extra_words)} загадываемых слов отсутствуют в валидных словах")
+                print(f"  Примеры: {list(extra_words)[:5]}")
+            # Добавляем недостающие слова в валидные
+            self.all_words.extend(list(extra_words))
+        
+        if self.verbose:
+            print(f"Валидных слов: {len(self.all_words)}")
+            if self.target_words is not self.all_words:
+                print(f"Загадываемых слов: {len(self.target_words)}")
         
         # Устанавливаем имя файла кэша
         if cache_file is None:
-            cache_file = f"first_move_cache_{self.language}.pkl"
+
+            # Учитываем размеры обоих словарей в имени кэша
+            cache_suffix = f"{len(self.all_words)}_{len(self.target_words)}"
+            cache_file = f"first_move_cache_{self.language}_{cache_suffix}.pkl"
         self.cache_file = cache_file
         
-        self.remaining_words = self.all_words.copy()
+
+        self.remaining_words = self.target_words.copy()
         self.attempts = []
         self.used_words = set()  # Отслеживаем использованные слова
         
@@ -278,7 +315,7 @@ class WordleSolver:
     def _load_words_raw(self, filename: str) -> List[str]:
         """Загрузка словаря из файла (без фильтрации)"""
         with open(filename, 'r', encoding='utf-8') as f:
-            words = [line.strip().lower() for line in f if len(line.strip()) == 5]
+            words = [line.strip().lower().replace('ё', 'е') for line in f if len(line.strip()) == 5]
         return words
     
     def _filter_words(self, words: List[str]) -> List[str]:
@@ -288,7 +325,7 @@ class WordleSolver:
         
         for word in words:
             if self.language == 'ru':
-                if all(('а' <= c <= 'я' or c == 'ё') for c in word):
+                if all('а' <= c <= 'я' for c in word):
                     filtered.append(word)
                 else:
                     skipped += 1
@@ -324,7 +361,17 @@ class WordleSolver:
             try:
                 with open(self.cache_file, 'rb') as f:
                     cache = pickle.load(f)
-                    if cache.get('word_count') == len(self.all_words):
+
+                    # Проверяем совпадение размеров обоих словарей
+                    valid_cache = (
+                        cache.get('valid_word_count') == len(self.all_words) and
+                        cache.get('target_word_count') == len(self.target_words)
+                    )
+                    # Для обратной совместимости со старыми кэшами
+                    if not valid_cache and 'word_count' in cache:
+                        valid_cache = cache.get('word_count') == len(self.all_words)
+                    
+                    if valid_cache:
                         if self.verbose:
                             print(f"[OK] Загружен кэш первого хода ({len(cache['scores'])} слов)")
                             if 'generated_at' in cache:
@@ -332,7 +379,8 @@ class WordleSolver:
                         return cache['scores']
                     else:
                         if self.verbose:
-                            print(f"! Кэш устарел (словарь изменился)")
+
+                            print(f"! Кэш устарел (словари изменились)")
             except Exception as e:
                 if self.verbose:
                     print(f"! Ошибка загрузки кэша: {e}")
@@ -379,8 +427,10 @@ class WordleSolver:
             return [(candidates[0], 0.0)]
         
         # Проверяем, это первый ход?
-        is_first_move = (len(candidates) == len(self.all_words) and
-                        len(self.remaining_words) == len(self.all_words))
+
+
+        is_first_move = (len(candidates) == len(self.target_words) and
+                        len(self.remaining_words) == len(self.target_words))
         
         if is_first_move and self.first_move_cache is not None:
             # Используем кэш
@@ -460,7 +510,8 @@ class WordleSolver:
     
     def reset(self):
         """Сбросить состояние решателя"""
-        self.remaining_words = self.all_words.copy()
+
+        self.remaining_words = self.target_words.copy()
         self.attempts = []
         self.used_words = set()
     
